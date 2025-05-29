@@ -2,10 +2,10 @@ import pandas as pd
 import numpy as np
 # import pyreadr 
 
-df_tracks = pd.read_csv('data/final_data_similitud.csv',index_col=0)
+df_tracks = pd.read_csv('https://juandmontoro.github.io/ACEI2025/data/final_data_similitud.csv',index_col=0)
 df_tracks = df_tracks[(df_tracks['role']=="lead")|(df_tracks['role']=="solo")]
-df_genre = pd.read_csv('data/genre_artists.csv',index_col=0)
-diversity = pd.read_csv('data/artists_similarity.csv', 
+df_genre = pd.read_csv('https://juandmontoro.github.io/ACEI2025/data/genre_artists.csv',index_col=0)
+diversity = pd.read_csv('https://juandmontoro.github.io/ACEI2025/data/artists_similarity.csv', 
                         index_col=0)
 #merge
 
