@@ -22,7 +22,7 @@ y = df['streams']
 
 
 variables_eliminar = ['id','track_name',
-                     'streams',
+                     'streams','nTags',
                     'markets',
                     'day',
                     'track_popularity',
