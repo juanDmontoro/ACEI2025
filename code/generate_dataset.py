@@ -29,7 +29,7 @@ y = df['streams']
 # ALTERNATIVAS PARA LA respuesta: track_popularity, weeks, top_ten (muy pocas obs.), peek_position (se puede hacer top ten), times_at_peek (pocas obs.), peek_streams
 
 
-variables_eliminar = ['id','track_name',
+variables_eliminar = ['track_name',
                      'streams','nTags',
                     'markets',
                     'day',
