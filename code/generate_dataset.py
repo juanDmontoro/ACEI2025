@@ -7,14 +7,22 @@ df_tracks = df_tracks[(df_tracks['role']=="lead")|(df_tracks['role']=="solo")]
 df_genre = pd.read_csv('https://juandmontoro.github.io/ACEI2025/data/genre_artists.csv',index_col=0)
 diversity = pd.read_csv('https://juandmontoro.github.io/ACEI2025/data/artists_similarity.csv', 
                         index_col=0)
+df_centrality = pd.read_csv('https://juandmontoro.github.io/ACEI2025/data/artist_centrality.csv')
 #merge
 
 df = pd.merge(df_tracks.drop(columns="artist_genres"),
               df_genre[['id','genre','genreMB','nTags']],
               left_on='artist_id',right_on='id',how="left")
 
+df = pd.merge(df.drop(columns='id'), diversity.drop(columns='name'),left_on='artist_id',right_on='id')
 
-#df.drop(columns=['id_x','id_y'],inplace=True)
+# llenamos nas en centrality
+df_centrality['closeness']=df_centrality['closeness'].fillna(1)
+df_centrality['between']=df_centrality['between'].fillna(0)
+df_centrality['eigenval']=df_centrality['eigenval'].fillna(0)
+
+
+df = pd.merge(df.drop(columns='id'), df_centrality.drop(columns='artist_name'),on='artist_id')
 
 
 y = df['streams']
