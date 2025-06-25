@@ -1,0 +1,1110 @@
+---
+format: 
+  revealjs:
+    width: 1920
+    height: 1080
+    footer: "ACEI 2025"
+    theme: clean
+    echo: true
+    incremental: false
+    scrollable: true
+    code-overflow: wrap
+    code-line-numbers: true
+    code-copy: true
+    code-link: true
+    code-annotations: hover
+    highlight-style: solarized
+    transition: convex
+    background-transition: fade
+    transition-speed: slow
+    auto-stretch: false
+execute: 
+  eval: true
+  echo: false
+  warning: false
+fig-align: center
+lang: en
+bibliography: bibliography.bib
+embed-resources: true
+---
+
+#  **Revisiting Success in Music Streaming: A Data-Driven Predictive Approach** {background-color="#447099"}
+
+&nbsp;
+
+<h2>Juan D Montoro-Pons & Manuel Cuadrado-García</h2>
+
+<h3>Universitat de València</h3>
+
+<h2>María Luisa Palma-Martos </h2>
+
+<h3>Universidad de Sevilla</h3>
+
+## Outline {style="color:#447099" visibility="hidden"}
+
+&nbsp;
+
+1. Descriptive analysis
+2. Artist representation's and derived metrics     
+    * Collaborations network: centrality metrics
+    * Social networks tags/labels: similarity measures
+3. Predicting commercial success: statistical learning models
+4. Interpretability of black-box models: Shapley values
+5. Discussions and conclusions 
+
+## Motivation {style="color:#447099" visibility="hidden"}
+
+&nbsp;
+
+> Cultural Economics meets machine learning
+
+
+- Use of metrics derived from unstructured data (e.g., text or networks) to improve (predictive) accuracy/performance of economic/econometric models
+- Use of a purely empirical approach in the process of model selection and validation
+- Incorporate flexible predictive models for learning estructural (causal) parameters
+
+
+## Highlights {style="color:#447099"}
+
+&nbsp;
+
+- Incorporate cultural practices (via unstructured data sources) into empirical models to enrich the representation of actors in the cultural sectors
+-  Include non-parametric/flexible statistical learning models in the toolbox of quantitative cultural economics
+- Assess empirical models based on out-of-sample performance providing robustness to findings (does the model perform on unseen data?)
+- Use of alternative tools to empirically interpret the contribution of track/artist-related features into chart performace
+
+> Ultimate goal is to identify what features have an impact on success in the streaming economy and learn causal effects using flexible machine learning tools
+
+
+## Related literature {style="color:#447099" visibility="hidden"}
+
+&nbsp;
+
+- Commercial success has been part of the cultural and creative industries  economics research agenda, where a strand of the literature is focused on music charts (recently streaming): **survival in charts**  [@Kaimann2021] and **superstar effects** [@IM20181675]; the impact of **artists' collaborations** [@Ordanini2018; @McKenzie2021], **early adoption** of new genres/subgenres [see @Sobchuk2024 on first-mover advantage].  
+Other papers expand the information sources incorporating promotional media influence   factors or  electronic word of mouth (e-WOM) [@lee2024exploring].
+
+- A parallel literature deals with pure prediction problems, mainly focused on enhancing predictive performance of models: the ability of distinctive audio (**song-level**) characteristics to predict charts sucess [@Saragih2023] and the different contribution of **song/artist-related features** [@Interiano2018]. **Collaborations** are also a topic in this line of research  but incorporating the topology of artists associations as predictors [@Kang2022] and the effect of popularity bias on how centrality and importance are measured [@south2020popularity].
+
+## Commercial success in the streaming economy  {style="color:#447099"}
+
+&nbsp;
+
+**Performance in streaming charts** has been explored extensively from a managerial/economic standpoint as well as through broader interdisciplinary lenses. **Survival in charts** has been found to be associated to being  signed to a major label and level of competition [@Kaimann2021], the influence of media exposure and electronic word of mouth [@lee2024exploring], or early adoption of new genres/subgenres [@Sobchuk2024].
+
+**Individual sonic features of songs** (both objective and perceptual) have been proposed 
+as predictors of  success: @askin2017makes introduce a metric of 
+tipicality of a song based on its features  (and suggest a similarity/differentiation 
+tradeoff). [See also @Interiano2018; @Saragih2023] 
+
+**Artists' collaborations**  has been a specific topic to explain streaming performance: the impact of joint efforts on commercial outcomes or the benefits of increasing the disimilarity between artists in collaborations have been both analyzed from a causal standpoint [@Ordanini2018; @McKenzie2021].
+
+**Collaboration networks** allow researchers to use artist association topologies as predictors  [@Kang2022] and identify popularity bias in centrality measures , i.e., how fame skews network importance metrics  [@south2020popularity].
+
+
+::: {.notes}
+
+@Saragih2023 or @Interiano2018 who incorporate the different contribution of song/artist-related features into prediction of success.
+:::
+## The dataset {style="color:#447099"}
+
+&nbsp;
+
+```{r}
+#| echo: false
+library(reticulate)
+load("data/final.Rdata")
+
+```
+
+
+* The primary dataset is retrieved from Spotify's global weekly chart, covering the period from 29/09/2013 to 23/01/2025. 
+
+* The sampling unit is a track (song)
+
+* Using webscraping and the `Spotify` API we collect information about a track's success (peak position on charts, weeks at peak position, maximum weekly streams, total streams, and a popularity index) and a set of track and artist features including information about genres, type of album, release date, artist(s) popularity and followers, whether the track is a collaboration, markets in which the album is present, and audio features of the track to mention some. Features can be classified as
+
+  - Track-specific
+  - Album-related 
+  - Artist(s)-related (e.g., online tags from `LastFM` and `MusicBrainz`)
+
+* The dataset includes information on `{r} length(unique(spotify_data$track_id))` tracks by `{r} length(unique(spotify_data$artist_id))` unique artists. 
+
+
+#  Descriptive analysis {background-color="#447099"}
+
+## Describing the dataset: tracks {style="color:#447099"}
+
+
+&nbsp;
+
+
+```{r}
+#| echo: false
+#| 
+library(tidyverse)
+library(tidygraph)
+library(igraph)
+library(kableExtra)
+
+spotify_data |> distinct(track_id,.keep_all=TRUE)  |>
+  select(weeks,top_ten,streams,peek_position,track_popularity,duration_ms,                                                     loudness,acousticness, instrumentalness,speechiness, danceability,energy,valence) |> 
+  mutate(streams=streams/1000000, duration_s=duration_ms/1000) |> select(-duration_ms) |> 
+  select(weeks,top_ten,streams,peek_position,track_popularity,duration_s,                                                     loudness,acousticness, instrumentalness,speechiness,danceability,energy,valence) |> 
+  skimr::skim() |> tibble() |> 
+  rename(variable=skim_variable) |> select(-skim_type) |> 
+  mutate(across(where(is.numeric), ~ round(.x, 3))) |> 
+  rename_with(~ sub("^[^.]+\\.", "", .x)) |>  # elimina todo antes del primer punto
+    kable(font_size = 30) 
+```
+
+
+## Describing the dataset: artists and collaborations  {style="color:#447099"}
+
+&nbsp;
+
+:::: {.columns}
+
+::: {.column width="45%"}
+
+```{r}
+#| echo: false
+
+collaborations <- spotify_data |> distinct(artist_id,.keep_all=TRUE) |> 
+  filter(number_collaborators>1) 
+
+media <- round(mean(collaborations$number_collaborators,na.rm=TRUE),2)
+mediana <- median(collaborations$number_collaborators,na.rm=TRUE)
+Q1 <- quantile(collaborations$number_collaborators,0.75,na.rm=TRUE)
+
+```
+
+
+* The dataset includes information on `{r} length(unique(spotify_data$artist_id))` unique artists. 
+
+* Of all the tracks, `{r} round((spotify_data %>% filter(collaboration==TRUE) %>% pull(track_id) %>% unique %>% 
+  length)/length(unique(spotify_data$track_id)),2)*100`% are **collaborations** 
+  between artists while `{r} round((spotify_data %>% filter(collaboration==FALSE) %>% pull(track_id) %>%   unique %>%   length)/( length(unique(spotify_data$track_id))),2)*100`% are **solo** tracks
+
+* Artist roles is  split between:
+    - **solo** (`{r} round((spotify_data %>% filter(role=='solo') %>% pull(track_id) %>%length)/dim(spotify_data)[[1]],2)*100`% of occurrences)
+    - **lead** (`{r} round((spotify_data %>% filter(role=='lead') %>% pull(track_id) %>%length)/dim(spotify_data)[[1]],2)*100`%) 
+    - **feature** (`{r} round((spotify_data %>% filter(role=='feature') %>% pull(track_id) %>%length)/dim(spotify_data)[[1]],2)*100`%).
+
+- Most frequent collaborations are between two artists: **mean**, **median** 
+and **Q1** of number of collaborators are **`{r} media`**,
+**`{r} mediana`** and **`{r} Q1`** respectively.
+
+:::
+::: {.column width="10%"}
+:::
+::: {.column width="45%"}
+```{r}
+#| echo: false
+
+spotify_data |> group_by(artist_name) |> 
+  summarise(tracks=n(),collab_ratio=paste0(round(mean(collaboration)*100,1),"%")) |> 
+              arrange(-tracks)  |> head(10) |> kable(full_width=T,align="r",font_size = 30) |>   
+  kable_styling(bootstrap_options = c("striped")) |> 
+  column_spec(2, width = "10em") |>   
+  column_spec(3, width = "10em") 
+
+```
+:::
+
+::::
+
+
+## Describing the dataset: more on collaborations  {style="color:#447099"}
+
+&nbsp;
+
+* `Spotify` API produces an index of popularity for artists. Furthermore it provides the number of `followers` in the platform.
+
+* For each collaboration we compute:
+  - The joint popularity 
+  - The `popularity_ratio` of each artist
+  - The joint number of followers
+  - The `followers_ratio` of each artist
+
+## Asymmetric collaborations {style="color:#447099"}
+
+```{r}
+#| echo: false
+
+spotify_data <- spotify_data %>% group_by(track_id)%>%
+  mutate(collab_popularity=mean(artist_popularity,na.rm=TRUE),
+         sum_popularity=sum(artist_popularity,na.rm = TRUE),
+         collab_followers=mean(followers,na.rm=TRUE),
+         sum_followers=sum(followers,na.rm=TRUE)) %>%
+  ungroup()
+
+
+spotify_data <- spotify_data %>% 
+  mutate(ratio_pop = artist_popularity/collab_popularity,
+         ratio_followers = followers/collab_followers,
+         more_popular = collab_popularity<artist_popularity,
+         more_followers = collab_followers<followers)
+
+```
+
+:::{.panel-tabset}
+
+## Popularity
+
+```{r}
+#| echo: false
+#| fig-align: "center"
+#| fig-width: 15
+#| fig-height: 8
+spotify_data %>% filter(role!='solo') %>% ggplot(aes(x=ratio_pop,y=role,fill=role)) +
+  geom_violin(width=1) +geom_boxplot(width=0.1, color="grey", alpha=0.2) + 
+  xlab('Popularity ratio') + theme_light(base_size = 20)
+
+```
+
+
+## Followers
+
+```{r}
+#| echo: false
+#| fig-align: "center"
+#| fig-width: 15
+#| fig-height: 8
+
+spotify_data %>% filter(role!='solo') %>% ggplot(aes(x=ratio_followers,y=role,fill=role)) +
+  geom_violin(width=1) +geom_boxplot(width=0.1, color="grey", alpha=0.2) + 
+  xlab('Followers ratio') + theme_light(base_size = 20)
+
+```
+
+## Tabulation
+
+&nbsp; 
+
+```{r}
+#| echo: false
+
+library(kableExtra)
+spotify_data %>% filter(role!='solo') %>% group_by(role) %>% 
+  summarise(`% of artists that are more popular` = round(mean(more_popular),2),
+            `% of artists that have more followers`= round(mean(more_followers),2),
+            `Average popularity ratio` = round(mean(ratio_pop),2),
+            `Average followers ratio` = round(mean(ratio_followers),2),
+            `Median popularity ratio` = round(median(ratio_pop),2),
+            `Median followers ratio` = round(median(ratio_followers),2)) %>%
+  pivot_longer(cols=-c(role),
+               names_to="measure",
+               values_to = "value")%>%
+  pivot_wider(
+    names_from = role,
+    values_from = value,
+    names_prefix = "Role: "
+  ) %>% kbl() %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+                font_size = 30)
+
+```
+
+
+## Collaboration and success
+
+&nbsp;
+
+```{r}
+#| echo: false
+
+spotify_data %>% group_by(collaboration) %>% 
+  summarise(popularity_track=round(mean(track_popularity),2),
+            weeks_in_lists=round(mean(weeks),2),
+            top_ten = round(mean(top_ten,na.rm=TRUE),2),
+            peek = round(mean(peek_position,na.rm=TRUE),2),
+            times_peek=round(mean(times_at_peek,na.rm=TRUE),2),
+            streams=round(mean(streams)/1000000,2)) %>%
+  pivot_longer(
+    cols=-c(collaboration),
+    names_to="Outcome",
+    values_to = "value"
+  ) %>%
+  pivot_wider(
+    names_from = collaboration,
+    values_from = value,
+    names_prefix = "Collab "
+  ) |> kbl(font_size=40)
+
+```
+
+
+
+:::
+
+# Engineering rich artist representations {background-color="#447099"}
+
+## Creating new artist-related variables  {style="color:#447099"}
+
+&nbsp;
+
+Besides the original variables (and their transformations) present in the dataset, we engineer **new features** to represent artists in **richer, more meaningful spaces**. These features are derived from two complementary sources:
+
+1. **Collaboration networks**  
+   - We analyze the structure of artist collaborations and compute **network centrality metrics** (e.g., degree, betweenness, closeness).  
+   - These aim at capturing an artist's **influence and connectivity** within the music ecosystem.
+
+2. **Unstructured text from social platforms**  
+   - We leverage **user-generated tags** from music platforms (`LastFM` and `MusicBrainz`) to understand how listeners describe and categorize artists.  
+   - By constructing a tag-based similarity space, we capture **semantic relationships** between artists based on audience perception.
+
+::: {.notes}
+Together, these features allow us to model artists not just by their raw data, but by their **position in social and semantic networks**—offering a more nuanced view of their identity and role in the music landscape.
+:::
+
+
+## Collaboration networks {style="color:#447099"}
+
+&nbsp;
+
+::: {.panel-tabset}
+## Degree centrality
+
+```{r}
+#| echo: false
+#| fig-width: 15
+#| fig-height: 8.
+library(igraph)
+library(tidygraph)
+library(ggraph)
+library(ggrepel)
+create_artist_adjacency_matrix <- function(df) {
+  # Create a list mapping track_id to artist_ids
+  track_artist_map <- aggregate(artist_id ~ track_id, data = df, list)
+  
+  # Get unique artists
+  unique_artists <- sort(unique(df$artist_id))
+  num_artists <- length(unique_artists)
+  
+  # Initialize adjacency matrix
+  adjacency_matrix <- matrix(0, nrow = num_artists, ncol = num_artists, dimnames = list(unique_artists, unique_artists))
+  
+  # Populate the matrix
+  for (artists_list in track_artist_map$artist_id) {
+    if (length(artists_list) > 1) {
+      for (i in 1:(length(artists_list) - 1)) {
+        for (j in (i + 1):length(artists_list)) {
+          artist1 <- artists_list[[i]]
+          artist2 <- artists_list[[j]]
+          adjacency_matrix[artist1, artist2] <- adjacency_matrix[artist1, artist2] + 1
+          adjacency_matrix[artist2, artist1] <- adjacency_matrix[artist2, artist1] + 1
+        }
+      }
+    }
+  }
+  
+  return(adjacency_matrix)
+}
+
+adj_mat <- spotify_data %>% 
+  filter(role!="solo") %>% 
+  select(artist_id,track_id) %>% create_artist_adjacency_matrix()
+grafo <- graph_from_adjacency_matrix(adj_mat,mode = "undirected")
+unique_mapping <- unique(spotify_data[, c("artist_id", "artist_name")])
+artist_names <- unique_mapping$artist_name[match(V(grafo)$name, unique_mapping$artist_id)]
+V(grafo)$artist_names <- artist_names
+
+tidygrafo <- as_tbl_graph(grafo)
+unique_mapping <- unique(spotify_data[, c("artist_id", "artist_name")])
+
+
+tidygrafo <- tidygrafo %>% mutate(centrality=centrality_degree())
+
+ tidygrafo %>% 
+  filter(V(tidygrafo)$centrality>quantile(V(tidygrafo)$centrality,p=0.95)) %>%
+  mutate(community=as.factor(group_louvain())) %>%  
+  ggraph(layout = "stress") + 
+  geom_edge_link0(alpha=0.3,color="grey90") + 
+  geom_node_point(aes(size=log(centrality),color=community,fill=community),shape=21) + 
+  geom_node_text(aes(label=artist_names,size=centrality,hjust = 1,vjust=-1,color=community))+
+  theme_graph() +theme(legend.position="none") 
+
+
+```
+
+## Betweenness centrality
+
+```{r}
+#| echo: false
+#| fig-width: 15
+#| fig-height: 8.
+
+tidygrafo <- tidygrafo %>% mutate(centrality=centrality_betweenness())
+
+tidygrafo %>% 
+  filter(V(tidygrafo)$centrality>quantile(V(tidygrafo)$centrality,p=0.95)) %>%
+  mutate(community=as.factor(group_louvain())) |>
+  ggraph(layout = "stress") + 
+  geom_edge_link0(alpha=0.3,color="grey90") + 
+  geom_node_point(aes(size=log(centrality),color=community,fill=community),shape=21) + 
+  geom_node_text(aes(label=artist_names,size=centrality,hjust = 1,vjust=-1,color=community))+
+  theme_graph() +theme(legend.position="none") 
+
+```
+
+## Centrality measures
+
+```{r}
+#| echo: false
+#| 
+# Create data frame storing all of the measures of centrality
+
+# Compute the degree centrality for our graph G. 
+degr_cent <- centr_degree(tidygrafo, mode = 'all')
+degr_cent <- degr_cent$res
+
+# Compute the eigenvector centrality of our network
+eign_cent <- eigen_centrality(tidygrafo)
+eign_cent <- eign_cent$vector
+
+# Compute the closeness centraility
+clos_cent <- igraph::closeness(tidygrafo)
+
+# Compute betweeness centrality
+betw_cent <- igraph::betweenness(tidygrafo)
+
+# Create data frame storing all of the measures of centrality
+data <- data.frame(vertex = V(tidygrafo),
+                   label = V(tidygrafo)$artist_names,
+                   degree = degr_cent, 
+                   eigen = eign_cent, 
+                   closeness = clos_cent, 
+                   betweeness = betw_cent)
+
+# Order the data by degree centrality
+data <- data %>% arrange(desc(degree))
+head(data,15) |> select(-vertex) |> kbl()
+```
+:::
+
+::: {.notes}
+
+**Louvain algorithm**
+
+The Louvain algorithm is a (greedy) method to detect non-overlapping communities 
+in a graph where the value to be optimized is modularity, defined as a value in the range [−1,1] 
+that measures the density of links inside communities compared to links between communities.
+
+Two stages method:
+
+First, small communities are found by optimizing modularity locally on all nodes. This process is applied repeatedly and sequentially to all nodes until no modularity increase can occur.
+
+Then each small community is grouped into one node and the first step is repeated. For each community in our graph's partition, the individual nodes making up that community are combined and the community itself becomes a node. The edges connecting distinct communities are used to weight the new edges connecting our aggregate nodes.  From here, the process can be repeated so that more nodes are moved into existing communities until an optimal level of modularity is reached. 
+
+**Centrality measures**
+
+1. Degree Centrality: The degree of a node is the number of other nodes that single node is connected to. Important nodes tend to have more connections to other nodes. Highly connected nodes are interpreted to have high degree centrality.
+
+2. Eigenvector Centrality: The extent to which adjacent nodes are connected themselves also indicate importance (e.g., Important nodes increase the importance of other nodes).
+
+3. Closeness centrality: Closeness centrality measures how many steps are required to access every other node from a given node. In other words, important nodes have easy access to other nodes given multiple connections.
+
+4. Betweenness Centrality: This ranks the nodes based on the flow of connections through the network. Importance is demonstrated through high frequency of connection with multiple other nodes. Nodes with high levels of betweenness tend to serve as a bridge for multiple sets of other important nodes.
+:::
+
+
+
+
+## Tags: `LastFM` {style="color:#447099"}
+
+::: {.columns}
+::: {.column width="50%"}
+![](pics/LastFm_badbunny.png)
+:::
+
+::: {.column width="50%"}
+![](pics/LastFM_TaylorSwift.png)
+:::
+
+:::
+## Tags: `MusicBrainz` {style="color:#447099"}
+
+::: {.columns}
+::: {.column width="50%"}
+![](pics/MB_badbunny.png)
+:::
+
+::: {.column width="50%"}
+![](pics/MB_TaylorSwift.png)
+:::
+
+:::
+
+
+## Tag mapping {style="color:#447099"}
+
+&nbsp;
+
+1. Started with a dataset containing a list of music artists.
+
+2. **Tag collection via `LastFM` API**  
+   - Retrieved user-generated tags for each artist using the `LastFM` API.
+   - Tags reflect how listeners perceive and describe each artist (genre-related such as "**rock**", "**indie**", "**electronic**", but also unrelated such as "**best of 2024**", "**seen live**", or "**worst ive heard today**").
+
+3. **Building the artist-tag matrix**  
+   - Constructed a **Document-Term Matrix (DTM)**:
+     - A **DTM** is a way to represent text data (or in this case, **tag data**) numerically 
+     - Think of it as a large table: **Rows** represent artists; **Columns** represent tags.
+     - Each cell shows how strongly a tag is associated with an artist (e.g., frequency or weight).
+   - Once we have the DTM, we can compute **similarity** between artists:
+    - **Cosine Similarity**: Measures how similar two tag vectors are, regardless of their magnitude.
+    - Other transformations (e.g., TF-IDF) can refine the matrix for better comparisons.
+
+## Cosine similarity: example {style="color:#447099"}
+
+```{r}
+#| echo: false
+os_info = Sys.info()["sysname"]
+if (os_info == "Darwin") {
+  # macOS (entorno base de anaconda)
+  Sys.setenv(RETICULATE_PYTHON = "/Users/jd/anaconda3/envs/econml/bin/python")
+} else {
+  # Linux y otros sistemas operativos (entorno base de anaconda)
+  Sys.setenv(RETICULATE_PYTHON = "/home/juand/anaconda3/envs/econml/bin/python")
+}
+```
+
+```{python}
+#| echo: false
+
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+artist_dist_df = pd.read_csv('data/cosine.csv',index_col=0)
+# Plot heatmap
+
+mask = np.triu(np.ones_like(artist_dist_df, dtype=bool))
+plt.figure(figsize=(15, 10))
+sns.heatmap(artist_dist_df, mask=mask,annot=False, cmap="Blues")
+# plt.title("Artist Distance Heatmap (Cosine Similarity of tag vectors)")
+# plt.show()
+
+```
+
+
+## DTM engineered features {style="color:#447099"}
+
+&nbsp; 
+
+1. **Pairwise similarity** betwen artists (i.e., *tag vectors*) in a collaboration (specific for tracks that are collaborations).
+
+2. **Mean similarity** to other artists: how generally "close" a *tag vector* is to the rest.
+
+3. **Similarity entropy** of an artist with all other artists: measures how evenly similar artist $i$ is to all other artists, how "focused" or "distributed" the similarity of a *tag vector* is. **High entropy** means an artist is similarly related to many artists (a genre-blender or mainstream artist). **Low entropy** means an artist is strongly similar to only a few artists (niche or highly distinctive artist).
+
+4. **Distance** of a *tag vector* **to centroid** (cosine-based): interpret each artist as a vector in the similarity space and compute its distance to the centroid of all artists (Generic, central, similar to many others vs. distinctive, specific, potentially outlier).
+ 
+
+## To sum up  {style="color:#447099"}
+
+| Variable             | Description                                                              | Type |
+|----------------------|--------------------------------------------------------------------------|------|
+| `track_popularity`     | Popularity score of the track (0–100) from Spotify                      | Y    |
+| `top_ten`              | Indicator whether the track reached Top 10                              | Y    |
+| `peek_position`        | Highest chart position reached                                           | Y    |
+| `times_at_peek`        | Number of times the track was at its peak position                      | Y    |
+| `peek_streams`         | Number of streams during the peak week                                  | Y    |
+| `streams`              | Total number of streams                                                  | Y    |
+| `track_id`             | Unique identifier of the track                                           | X    |
+| `explicit`             | Whether the track contains explicit content                             | X    |
+| `album_type`           | Type of album (e.g., single, album)                                      | X    |
+| `release_date`         | Date when the track was released                                         | X    |
+| `disc_number`          | Disc number (in case of multi-disc albums)                              | X    |
+| `total_tracks`         | Total number of tracks in the album                                     | X    |
+| `track_number`         | Position of the track within the album                                  | X    |
+| `number_markets`       | Number of markets where the track is available                          | X    |
+| `markets`              | List of countries where the track is available                          | X    |
+| `collaboration`        | Whether the track is a collaboration                                    | X    |
+| `number_collaborators` | Number of artists involved in the track                                 | X    |
+| `role`                 | Role of the artist (lead, feature, solo)                                | X    |
+| `artist_genres`        | List of genres associated with the artist                               | X    |
+| `followers`            | Number of followers the artist has                                      | X    |
+| `artist_popularity`    | Popularity score of the artist (0–100) from Spotify                     | X    |
+| `weeks`                | Number of weeks in the ranking or tracking period                       | X    |
+| `time_signature`       | Musical time signature (e.g., 4/4, 3/4)                                  | X    |
+| `track_name`           | Name of the track                                                        | X    |
+| `duration_ms`          | Duration of the track in milliseconds                                   | X    |
+| `danceability`         | How suitable a track is for dancing (0–1)                               | X    |
+| `energy`               | Energy level of the track (0–1)                                         | X    |
+| `key`                  | Key of the song (0=C, 1=C#/Db, …, 11=B)                                 | X    |
+| `loudness`             | Average loudness in decibels                                            | X    |
+| `mode`                 | Musical mode: major (1) or minor (0)                                    | X    |
+| `speechiness`          | Degree of spoken words in the track (0–1)                               | X    |
+| `acousticness`         | Confidence that the track is acoustic (0–1)                             | X    |
+| `instrumentalness`     | Likelihood that the track has no vocals (0–1)                           | X    |
+| `liveness`             | Probability the track was recorded live (0–1)                           | X    |
+| `valence`              | Musical positiveness or mood (0–1)                                      | X    |
+| `tempo`                | Beats per minute (BPM) of the track                                     | X    |
+| `year`                 | Release year                                                            | X    |
+| `month`                | Release month                                                           | X    |
+| `ratio_pop`            | `artist_popularity` / if collab `sum_popularity_artists_in_collab`   otherwise 1                               | X    |
+| `ratio_followers`      | `followers` /if collab `sum_followers_artists_in_collab` otherwise 1                                           | X    |
+| `more_popular`         | Logical:  `artist_popularity` > `mean_collab_popularity`                      | X    |
+| `more_followers`        | Logical: `followers` > `mean_collab_followers`   | X    |
+|  `centrality_measures`       | graph-related centrality measures                               | X    |
+|  `distance_measures`       | DTM-related centrality measures                               | X    |
+
+
+
+
+#  Predicting success with classifiers {background-color="#447099"}
+
+## Modeling strategy  {style="color:#447099"}
+
+&nbsp;
+
+* We choose three different categorical responses. Specifically: 
+
+  - track is in the top_ten
+  - track is in the first quartile of streams distribution
+  - track is in the top 50% of the streams distribution
+
+* We fit different statistical learning models to the dataset. These are:
+
+  - `Logistic regression`  (`lr`, with and without regularizacion)
+  - Two ensembles: a `random forest` (`rf`) and an `extreme gradient boosting classifier` (`xgb`)
+  - Two support vector machines (linear and non-linear): `lsvc` and `svc` 
+  - Neural network (`nn`)
+  
+* Performance of all models is assessed using a holdout sample through 5-fold cross-validation
+
+* Regularization parameters are selected via cross-validation (using the f1 score 
+as the metric of predictive performance)
+
+> Best models for each response will be further analyzed
+
+## Estimation results  {style="color:#447099"}
+
+
+:::{.panel-tabset}
+
+## Top ten
+
+&nbsp; 
+
+```{python}
+#| echo: false
+url = 'https://juandmontoro.github.io/ACEI2025/results/top_10/cv_results_grid.csv'
+table = pd.read_csv(url)
+```
+
+```{r}
+#| echo: false
+#| 
+py$table |> select(Model,mean_test_accuracy,
+                mean_test_f1, mean_test_recall, mean_test_precision) |> kbl() |>   row_spec(2, bold = T, color = "white", background = "#D7261E")
+
+```
+
+
+## Top quartile
+
+&nbsp;
+
+```{python}
+#| echo: false
+url = 'https://juandmontoro.github.io/ACEI2025/results/top_Q1/cv_results_grid.csv'
+table = pd.read_csv(url)
+```
+
+```{r}
+#| echo: false
+#| 
+py$table |> select(Model,mean_test_accuracy,
+                mean_test_f1, mean_test_recall, mean_test_precision) |> kbl() |>  row_spec(5, bold = T, color = "white", background = "#D7261E")
+
+```
+
+
+
+## Top 50%
+
+&nbsp;
+
+```{python}
+#| echo: false
+url = 'https://juandmontoro.github.io/ACEI2025/results/top_50/cv_results_grid.csv'
+table = pd.read_csv(url)
+```
+
+```{r}
+#| echo: false
+#| 
+py$table |> select(Model,mean_test_accuracy,
+                mean_test_f1, mean_test_recall, mean_test_precision) |> kbl()  |>  row_spec(4, bold = T, color = "white", background = "#D7261E")
+
+```
+
+
+:::
+
+
+
+#  Interpretability of black-box models {background-color="#447099"}
+
+## Shapley values {style="color:#447099"}
+
+&nbsp;
+
+- Measure each variable's individual contribution to a model's prediction. 
+
+- Shapley values produce **local explanations** (individual predictions) but can be 
+interpreted **globally** 
+
+- The working: For each prediction of the model: 
+
+  1. Consider a baseline prediction (the average)
+  2. For every variable $i$ and every possible combination of features $J$, $i \not\in J$ 
+    - Obtain the prediction of the model including features $J$ with and without feature $i$: the difference between these two predictions is the contribution of $i$
+    - Average the contributions computed in the previous step (contribution of $i$ for all possible subsets $J$)
+
+- The method relies on Monte Carlo sampling to approximate Shapley values by randomly sampling subsets of features rather than evaluating them all.  
+
+::: {.notes}
+- Shapley values are a method from cooperative game theory that allows us to measure each feature’s individual contribution to a model’s prediction. Think of the model’s prediction as a “reward” that needs to be fairly distributed among “players” (the features). By calculating Shapley values, we determine how much each feature contributed to the prediction by seeing how the prediction changes when we add or remove that feature from various subsets of features.
+
+- To calculate Shapley values, we use a value function representing the model’s prediction based on any subset of features. This function lets us measure how much the prediction changes when a particular feature is added to a subset, capturing the marginal contribution of each feature.
+
+- Because the model’s prediction depends on all features—even those not in the subset we’re focusing on—we use marginalization to account for the remaining features by averaging their possible values. This lets us isolate the specific impact of the features in our subset.
+
+- The Shapley value for a feature is computed by averaging its marginal contributions across all possible subsets of features. This ensures that each feature’s contribution is fairly represented. However, calculating Shapley values for all subsets becomes computationally intense as the number of features increases since there are exponentially many subsets to consider.
+
+- To simplify this, we use Monte Carlo sampling to approximate Shapley values by randomly sampling subsets of features rather than evaluating them all. This method involves comparing the model’s predictions on random subsets with and without a specific feature and then averaging these differences across samples of records to estimate the feature’s contribution.
+
+- When estimating Shapley values through sampling, it’s important to evaluate how close these approximations are to the true values. Hoeffding’s inequality helps us by providing a statistical guarantee: it bounds the probability that the sampled-based Shapley values will deviate from the true Shapley values by more than a specified amount.
+
+$$P\left(|\hat{\phi_j} - \phi_j | \right) \leq 2 \exp\left( -\frac{2 K \epsilon ^2}{(b-a)^2}\right)$$
+
+with $\hat{\phi_j}$ and $\phi_j$ predicted  and actual Shapley value, $\epsilon$ the acceptable error margin, $K$ the number of samples and $b$ and $a$ represent the
+range within which the model's output varies for a single prediction. This shows that as we increase $K$ the estimate becomes more reliable.
+
+- By applying Hoeffding’s inequality, we can establish that, for a sufficiently large number of samples $K$, the probability that our Shapley value estimate deviates from the actual value by more than a small error margin $\epsilon$ becomes very small. 
+
+- KernelExplainer estimates Shapley values by sampling subsets and comparing predictions with and without each feature. Although KernelExplainer is flexible, it assumes feature independence, which can lead to slight biases when features are correlated: it uses marginal sampling rather than conditional sampling and consequently, the Shapley values calculated with KernelExplainer may be biased by its assumption that features are independent. Given our experiment’s natural grouping of features, Owen values may have been a more suitable choice from the start, as they can account for feature interactions.
+
+
+- Like Shapley values, Owen values aim to fairly distribute the model’s prediction among features. However, instead of evaluating features individually, Owen values allow us to create coalitions of features that act together. 
+
+- To calculate Owen values:
+
+  - We first form coalitions based on related features.
+  - Then, we treat each coalition as a single “player” in the cooperative game, 
+  calculating the Shapley value for each coalition.
+  - Finally, within each coalition, we distribute the coalition’s Shapley value among individual features based on their individual contributions within the coalition.
+
+
+- This two-step process (calculating Shapley values for coalitions, then distributing within each coalition) ensures that Owen values accurately reflect both individual and collective contributions, especially when features are interdependent.
+
+- In machine learning explainability, choosing between Shapley and Owen values is a strategic decision. Shapley values excel in analyzing independent contributions, while Owen values are better suited for capturing interactions within feature groups. This distinction is crucial when dependencies exist, as Owen values provide a more accurate reflection of joint influences.
+
+- When features are correlated, the use of KernelExplainer from the SHAP library can lead to biased results, since this method assumes all features are independent. In cases where features naturally form groups, Owen values offer a better alternative by accurately capturing feature interactions through grouped coalitions. Combining Shapley and Owen values is beneficial in complex models with independent and interdependent features.
+:::
+
+## Shapley values: top ten {style="color:#447099"}
+
+::: {.panel-tabset}
+
+## Local explanation (i)
+
+```{python}
+#| echo: false
+#| fig-align: center
+#| 
+import joblib
+import shap
+import matplotlib.pyplot as plt
+
+# https://towardsdatascience.com/how-to-easily-customize-shap-plots-in-python-fdff9c0483f2/
+# manipular shap plots
+explanation = joblib.load(filename='resultados/top_10/rf_explanation.pkl')
+fig = plt.figure()
+shap.plots.waterfall(explanation[0,:,1],max_display=10,show=False)
+plt.gcf().set_size_inches(20/1.1,12/1.5)
+plt.show()
+```
+
+## Local explanation (ii)
+
+```{python}
+#| echo: false
+#| fig-align: center
+
+fig = plt.figure()
+shap.plots.waterfall(explanation[9,:,1],max_display=10, show=False)
+plt.gcf().set_size_inches(20/1.1,12/1.5)
+plt.show()
+
+```
+
+## Global explanation (i)
+
+```{python}
+#| echo: false
+#| fig-align: center
+
+fig = plt.figure()
+shap.plots.beeswarm(explanation[:,:,1],max_display=15 ,show=False)
+plt.gcf().set_size_inches(20/1.3,12/1.3)
+plt.show()
+
+```
+
+
+## Global explanation (ii)
+
+```{python}
+#| echo: false
+#| fig-align: center
+
+fig = plt.figure()
+shap.plots.bar(explanation[:,:,1],max_display=15,show=False )
+plt.gcf().set_size_inches(20/1.3,12/1.3)
+plt.show()
+
+```
+
+:::
+
+## Shapley values: top quartile {style="color:#447099"}
+
+
+```{python}
+#| echo: false
+#| fig-align: center
+#| 
+# https://towardsdatascience.com/how-to-easily-customize-shap-plots-in-python-fdff9c0483f2/
+# manipular shap plots
+explanation = joblib.load(filename='resultados/top_25/svc_shap_explanation.pkl')
+fig = plt.figure()
+shap.plots.beeswarm(explanation[:,:,1],max_display=15 ,show=False)
+plt.gcf().set_size_inches(20/1.3,12/1.3)
+plt.show()
+```
+
+## Shapley values: top 50% {style="color:#447099"}
+
+```{python}
+#| echo: false
+#| fig-align: center
+#| 
+# https://towardsdatascience.com/how-to-easily-customize-shap-plots-in-python-fdff9c0483f2/
+# manipular shap plots
+explanation = joblib.load(filename='resultados/top_50/xgb_explanation.pkl')
+fig = plt.figure()
+shap.plots.beeswarm(explanation[:,:,1],max_display=15 ,show=False)
+plt.gcf().set_size_inches(20/1.3,12/1.3)
+plt.show()
+```
+
+## Summary: impact of individual variables on model predictions  {style="color:#447099"}
+
+&nbsp;
+
+```{r}
+#| echo: false
+#| 
+features_tibble <- tibble::tibble(
+  Feature = c(
+    "Entropy", "Centroid similarity", "Mean similarity", "Betweenness", "Eigenvalue centrality", "Closeness", "Similarity (pairwise)","Popularity ratio",
+    "Followers ratio", "Track characteristics"
+  ),
+  Top_ten = c(
+    "(+)", "(+)", "(+)", "(+)", "(+-)", "(+-)", "(-)","(+-)", "(-)",
+    "Pop(+), hip-hop(-), duration (+), energy (-)"
+  ),
+  Top_25 = c(
+    "(+)", "(-)", "(+)", "(+)", "(+-)", "(+-)","(+-)", "(-)", "(-)",
+    "Speechiness (-), energy(-), danceability(+), explicit (-), number collaborators (-)"
+  ),
+  Top_50 = c(
+    "(+-)", "(-)", "(+)", "(+-)", "(+-)", "(+-)","(+-)", "(+-)", "(+-)",
+    "Explicit (-), loudness (+), danceability (+), speechiness (-), energy (-), duration(+-)"
+  )
+)
+features_tibble |> 
+  kbl(format='html',scape=FALSE,align="lccc") |>
+  row_spec(1:3,bold = T, color = "white", background = "#94ad5f") |>
+  row_spec(4:6,bold = T, color = "white", background = "#465dc4")|>
+  row_spec(7:9,bold = T, color = "white", background = "#eda42c") |>
+  row_spec(10,bold = T, color = "white", background = "#ff3300") 
+```
+
+
+
+#  Discussion {background-color="#447099"}
+
+## Findings {style="color:#447099"}
+
+&nbsp; 
+
+The work has generated insights about success in streaming music. Particularly:
+
+1. We refined the representation of artists using two (unstructured) data sources:
+    - As nodes in a graph allowing to incorporate metrics of connections between them  
+    - As mappings to user-defined labels that allows to introduce measures of similarity/distance 
+    that go beyond  curated lists of genres (that might convey different meaning to different 
+    users) 
+   
+2. Based on the Shapley values for the best models it is found that:
+    - Graph centrality metrics are weakly associated to charts performance, particularly betweenness,
+    which measures the function of nodes (artists) that facilitate the flow of information within the     network   
+    - Similarity-derived metrics are consistently stringly associated to the outcome: in most cases,
+    high values are related to success. Higher values for entropy, centroid or mean similarity
+    increase predicted probability of success
+    - Regarding collaborations, we find some evidence of pairwise similarity affecting success
+    negatively: the more different two artists collaborating the more the probability of success
+    - Furthermore there is some evidence of the asymmetric benefits of collaborations: being 
+    `lead`  in an asymmetric collaboration (having less followers than the featured artist)  is
+    related to a greater probability of success.
+
+## Concluding remarks {style="color:#447099"}
+
+&nbsp; 
+  
+-  Incorporating flexible (non-parametric) approaches to predict sucess in the streaming economy
+brought about gains in models performance 
+
+- The integration of unstructured data into quantitative research broadens the methodological toolkit of researchers in cultural economics, allowing for a richer and more nuanced representation of complex problems
+
+- Of course, ***predictive performance and empirical associations are not causal relations***. However, these can be seen as a first step to estimate structural coefficients using machine learning techniques:
+  - `Double/debiased machine learning`
+  - `Metalearners` for heterogeneous treatment effects (HTEs) 
+  - Other techniques for HTEs such as `causal forest` or `Bayesian causal forest`
+
+
+
+#  Thanks! {background-color="#447099"}
+
+#  Appendix: models excluding network metrics {background-color="#447099"}
+
+## Training results {style="color:#447099"}
+
+::: {.panel-tabset}
+
+## Top ten
+
+&nbsp; 
+
+```{python}
+#| echo: false
+url = 'resultados/top_10b/cv_results_grid.csv'
+table = pd.read_csv(url)
+```
+
+```{r}
+#| echo: false
+#| 
+py$table |> select(Model,mean_test_accuracy,
+                mean_test_f1, mean_test_recall, mean_test_precision) |> kbl() |>   row_spec(2, bold = T, color = "white", background = "#D7261E")
+
+```
+
+
+## Top quartile
+
+&nbsp;
+
+```{python}
+#| echo: false
+url = 'resultados/top_25b/cv_results_grid.csv'
+table = pd.read_csv(url)
+```
+
+```{r}
+#| echo: false
+#| 
+py$table |> select(Model,mean_test_accuracy,
+                mean_test_f1, mean_test_recall, mean_test_precision) |> kbl() |>  row_spec(5, bold = T, color = "white", background = "#D7261E")
+
+```
+
+
+
+## Top 50%
+
+&nbsp;
+
+```{python}
+#| echo: false
+url = 'resultados/top_50b/cv_results_grid.csv'
+table = pd.read_csv(url)
+```
+
+```{r}
+#| echo: false
+#| 
+py$table |> select(Model,mean_test_accuracy,
+                mean_test_f1, mean_test_recall, mean_test_precision) |> kbl()  |>  row_spec(4, bold = T, color = "white", background = "#D7261E")
+
+```
+
+:::
+
+
+## Shapley values {style="color:#447099"}
+
+::: {.panel-tabset}
+
+## Top 10
+
+```{python}
+#| echo: false
+#| fig-align: center
+#| 
+import joblib
+import shap
+import matplotlib.pyplot as plt
+
+# https://towardsdatascience.com/how-to-easily-customize-shap-plots-in-python-fdff9c0483f2/
+# manipular shap plots
+explanation = joblib.load(filename='resultados/top_10b/rf_explanation.pkl')
+fig = plt.figure()
+shap.plots.beeswarm(explanation[:,:,1],max_display=15 ,show=False)
+plt.gcf().set_size_inches(20/1.1,12/1.5)
+plt.show()
+```
+
+## Top quartile {style="color:#447099"}
+
+```{python}
+#| echo: false
+#| fig-align: center
+#| 
+# https://towardsdatascience.com/how-to-easily-customize-shap-plots-in-python-fdff9c0483f2/
+# manipular shap plots
+explanation = joblib.load(filename='resultados/top_25b/svc_shap_explanation.pkl')
+fig = plt.figure()
+shap.plots.beeswarm(explanation[:,:,1],max_display=15 ,show=False)
+plt.gcf().set_size_inches(20/1.3,12/1.3)
+plt.show()
+```
+
+## Top 50% {style="color:#447099"}
+
+```{python}
+#| echo: false
+#| fig-align: center
+#| 
+# https://towardsdatascience.com/how-to-easily-customize-shap-plots-in-python-fdff9c0483f2/
+# manipular shap plots
+explanation = joblib.load(filename='resultados/top_50b/xgb_explanation.pkl')
+fig = plt.figure()
+shap.plots.beeswarm(explanation[:,:,1],max_display=15 ,show=False)
+plt.gcf().set_size_inches(20/1.3,12/1.3)
+plt.show()
+```
+
+:::
+
+
+## References {style="color:#447099"}
+
+&nbsp;
+
